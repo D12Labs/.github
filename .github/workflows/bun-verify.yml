@@ -1,0 +1,95 @@
+name: bun verify
+
+# Shared CI for D12Labs Bun repos. Called, not copied — templates/consumer-ci.yml in
+# d12-pipeline was the right idea, but a copied template never receives a fix. This lives in
+# one place, so the Bun version, the action versions and the step order are changed once.
+#
+# The job is deliberately named `verify` to match the required status check in
+# d12-pipeline/templates/org-rulesets/org-main-verify.json. Renaming it breaks that ruleset for
+# every consumer — if you rename it here, update the ruleset in the same change.
+#
+# Use it from a consumer repo's .github/workflows/ci.yml:
+#
+#   name: CI
+#   on:
+#     pull_request:
+#       branches: [main]
+#     push:
+#       branches: [main]
+#   concurrency:
+#     group: ci-${{ github.ref }}
+#     cancel-in-progress: true
+#   jobs:
+#     verify:
+#       uses: D12Labs/.github/.github/workflows/bun-verify.yml@main
+#       with:
+#         build: false        # nexora and flotion have no build script
+#
+# Note the doubled `.github/.github/` — the first is the repository named `.github`, the second
+# is its workflows directory. That is the required form, not a typo.
+#
+# Repos with no lint/typecheck/test/build script should switch the matching input off rather
+# than add an empty script: `bun run <missing>` exits non-zero and fails the check.
+
+on:
+  workflow_call:
+    inputs:
+      bun-version:
+        description: "Bun version. Pinned centrally — do not use `latest`, it makes a green run unreproducible."
+        type: string
+        default: "1.4.0"
+      runs-on:
+        type: string
+        default: "ubuntu-latest"
+      working-directory:
+        type: string
+        default: "."
+      lint:
+        type: boolean
+        default: true
+      typecheck:
+        type: boolean
+        default: true
+      test:
+        type: boolean
+        default: true
+      build:
+        type: boolean
+        default: true
+      install-args:
+        description: "Passed to bun install. --frozen-lockfile means a stale lockfile fails CI instead of silently resolving."
+        type: string
+        default: "--frozen-lockfile"
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ${{ inputs.runs-on }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ inputs.bun-version }}
+
+      - name: install
+        run: bun install ${{ inputs.install-args }}
+
+      - name: lint
+        if: ${{ inputs.lint }}
+        run: bun run lint
+
+      - name: typecheck
+        if: ${{ inputs.typecheck }}
+        run: bun run typecheck
+
+      - name: test
+        if: ${{ inputs.test }}
+        run: bun run test
+
+      - name: build
+        if: ${{ inputs.build }}
+        run: bun run build
